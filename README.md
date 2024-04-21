@@ -1,0 +1,2 @@
+# scrapper_bot
+init
