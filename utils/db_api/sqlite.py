@@ -38,6 +38,7 @@ class Database:
         Name varchar(255) NOT NULL,
         dates TIMESTAMP ,
         is_user int ,
+        post_max int,
         worlds varchar(255),
         PRIMARY KEY (id)
 
@@ -67,7 +68,8 @@ class Database:
         sql = """
         CREATE TABLE IF NOT EXISTS Chats(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        chat varchar(255)
+        chat varchar(255),
+        link_url varchar(255)
         );
         """
         self.execute(sql, commit=True)
@@ -122,9 +124,9 @@ class Database:
 
 
 
-    def add_chats(self, id: int, chat: str):
-        sql = "INSERT INTO Chats(id, chat) VALUES (?,?)"
-        parameters = (None, chat)
+    def add_chats(self, id: int, chat: str, link_url:str):
+        sql = "INSERT INTO Chats(id, chat, link_url) VALUES (?,?,?)"
+        parameters = (None, chat, link_url)
         self.execute(sql, parameters=parameters, commit=True)
 
     def select_all_chats(self):

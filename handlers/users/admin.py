@@ -1,23 +1,25 @@
-import asyncio
-import csv
 import time
+import re
 
 from aiogram import types
-from aiogram.dispatcher.filters import state
+
 from aiogram.dispatcher.filters.state import StatesGroup, State
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.utils.exceptions import BotBlocked
+
 from telethon import TelegramClient, events
-from telethon.tl.functions.messages import GetDialogsRequest, GetHistoryRequest
-from telethon.tl.types import Channel, Chat, InputPeerEmpty, PeerChannel
+from telethon.tl.types import PeerUser
 
-from keyboards.default.menu import users
-from loader import dp, bot, db
+from botogram import Bot as btt
 
-API_ID = '200469'
-API_HASH = '5a7d00324871cbe0847cf9e061048a73'
-phone = "+79997500005"
+from data import config
+from handlers.users import scraper
+
+from loader import dp, bot, db, client_tg
 
 sent_messages = []
+
+client = client_tg
 
 
 class FormPost(StatesGroup):
@@ -26,6 +28,10 @@ class FormPost(StatesGroup):
 
 class FormChats(StatesGroup):
     chats = State()
+
+
+class FormChatsUrl(StatesGroup):
+    chatsUrl = State()
 
 
 class FormAusers(StatesGroup):
@@ -123,10 +129,8 @@ async def process_name(message: types.Message, state: FormPost.post):
 
 @dp.message_handler(text="Проверить посты")
 async def get_check_post(message: types.Message):
-    client = TelegramClient("mibotdd", API_ID, API_HASH, system_version='4.16.30-vxCUSTOM')
     await client.start()
 
-    dialogs = client.iter_dialogs()
     wlds = db.select_all_worlds()
     wlds_all = []
     for wld in wlds:
@@ -134,32 +138,46 @@ async def get_check_post(message: types.Message):
     chats = db.select_all_chats()
     all_chats = []
     for chat in chats:
-        all_chats.append(chat[1])
+        all_chats.append(chat[2])
+    # print(all_chats)
 
-    async for dialog in dialogs:
-        # print(dialog.title)
-        founds = any(word in dialog.title for word in all_chats)
-        # print(founds)
-        if founds:
-            print(dialog.title)
-            part_mes = await client.get_messages(dialog.id, limit=10)
-            for mss in part_mes:
-                time.sleep(1)
-                print(mss.text)
-                if mss.text != '':
-                    found = any(word in mss.text for word in wlds_all)
-                    if found:
-                        user = await client.get_entity(mss.sender_id)
-                        await message.answer(mss.text,
-                                             reply_markup=types.InlineKeyboardMarkup(
-                                                 inline_keyboard=[
-                                                     [
-                                                         types.InlineKeyboardButton(text="Open Profile",
-                                                                                    url=f"https://t.me/{user.username}")
-                                                     ]
+    for chat in all_chats:
+        # print(chat)
+        time.sleep(1)
+        messages = client.iter_messages(chat, limit=50)
+
+        async for mess in messages:
+            # print(message.text)
+            time.sleep(1)
+            found = any(word in mess.text for word in wlds_all)
+            if found:
+                # print(mess.text)
+                try:
+                    print("P")
+                    user = await client.get_entity(mess.sender_id)
+                except ValueError:
+                    print("dd")
+                    keyboard = types.InlineKeyboardMarkup()
+                    button = types.InlineKeyboardButton(text="Пользователь скрыл свой ник",
+                                                        callback_data="empty_button")
+                    keyboard.add(button)
+                    await message.answer(mess.text, reply_markup=keyboard)
+
+
+                else:
+                    print("Nothing went wrong")
+                    await message.answer(mess.text,
+                                         reply_markup=types.InlineKeyboardMarkup(
+                                             inline_keyboard=[
+                                                 [
+                                                     types.InlineKeyboardButton(
+                                                         text=f"Написать сообщение {user.username}",
+                                                         url=f"https://t.me/{user.username}")
                                                  ]
-                                             ))
-    await client.disconnect()
+                                             ]
+                                         ))
+
+    # await client.disconnect()
 
 
 @dp.message_handler(text="Все пользователи")
@@ -284,13 +302,43 @@ async def gets_chats(message: types.Message, mode: int):
 async def process_chats(messages: types.Message, state: FormChats.chats):
     # await FormChats.chats.set()
     async with state.proxy() as data:
-        if messages.content_type == 'photo':
-            data['text'] = messages.caption
-        else:
-            data['text'] = messages.text
+        data['name'] = messages.text
+        # await state.finish()
+        print(f"{data['name']}")
+        # wld = f"{data['text']}"
+        # db.add_chats(None, wld)
+        await FormChatsUrl.chatsUrl.set()
+        await messages.answer("Напишите ссылку чата")
+
+
+@dp.message_handler(state=FormChatsUrl.chatsUrl, content_types=['text'])
+async def process_chats(messages: types.Message, state: FormChats.chats):
+    # await FormChats.chats.set()
+    print(state.proxy())
+    async with state.proxy() as data:
+        data['url'] = messages.text
         await state.finish()
-        print(f"{data['text']}")
-        wld = f"{data['text']}"
-        db.add_chats(None, wld)
-        # await FormChats.chats.set()
-        await messages.answer("Чат добавлен и доступен для парсинга")
+        print(f"{data}")
+        urls = f"{data['url']}"
+        names = f"{data['name']}"
+        db.add_chats(None, names, urls)
+        # await FormChatsUrl.chatsUrl.set()
+        await messages.answer("Link added")
+
+
+# @client.on(events.NewMessage(chats=('https://t.me/instalogiya_chat',)))
+# # @client.on(events.NewMessage())
+# async def normal_handler(event):
+#     print(event.message)
+#
+#     await dp.bot.send_message(event.message)
+#     # for tag in TAGS:
+#     #
+#     #     if tag in str(event.message):
+#     #         print()
+#     #
+#     #      # await client.send_message(OUTPUT_CHANNEL, event.message)
+#
+#
+# client.start()
+# client.run_until_disconnected()
